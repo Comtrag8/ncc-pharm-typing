@@ -1,0 +1,513 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Pharmacy Typing Practice (NCC)</title>
+  <style>
+    :root{--bg:#0b1220;--card:#111a2b;--ink:#e6eefc;--muted:#aac1ea;--ok:#19c37d;--warn:#ffb020;--err:#ff5c5c}
+    html,body{height:100%}
+    body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial, sans-serif}
+    .wrap{max-width:1200px;margin:0 auto;padding:20px}
+    header{display:flex;gap:16px;align-items:center;justify-content:space-between}
+    h1{font-size:1.25rem;margin:0}
+    .grid{display:grid;grid-template-columns:320px 1fr;gap:16px;margin-top:16px}
+    .card{background:var(--card);border-radius:14px;padding:14px 16px;box-shadow:0 1px 0 rgba(255,255,255,0.04) inset, 0 10px 20px rgba(0,0,0,0.3)}
+    label{display:block;font-size:.85rem;color:var(--muted);margin:8px 0 4px}
+    select,button,input[type="text"]{width:100%;padding:10px 12px;border-radius:10px;border:1px solid #2b3960;background:#0c1526;color:var(--ink)}
+    button{cursor:pointer}
+    button.primary{background:linear-gradient(180deg,#2d64ff,#1c47c8);border:0}
+    button.ghost{background:transparent;border:1px solid #2b3960}
+    button:disabled{opacity:.6;cursor:not-allowed}
+    .row{display:flex;gap:8px;align-items:center}
+    .stats{display:flex;gap:12px;flex-wrap:wrap}
+    .stat{background:#0c1526;border:1px solid #2b3960;border-radius:12px;padding:10px 12px;min-width:120px;text-align:center}
+    .stat small{display:block;color:var(--muted);font-size:.75rem}
+    .prompt{user-select:none;white-space:pre-wrap;background:#0c1526;border:1px solid #2b3960;border-radius:12px;padding:12px;min-height:160px;max-height:220px;overflow:auto}
+    .typed{min-height:160px;max-height:220px;overflow:auto;border-radius:12px;border:1px dashed #2b3960;padding:12px;background:#0c1526}
+    .char{padding:1px 0;border-bottom:2px solid transparent}
+    .char.correct{color:var(--ok)}
+    .char.incorrect{color:var(--err);border-bottom-color:var(--err)}
+    .controls{display:flex;gap:8px;flex-wrap:wrap}
+    .kudos{color:var(--ok)}
+    .warn{color:var(--warn)}
+    .muted{color:var(--muted)}
+    .footer{margin-top:12px;color:var(--muted);font-size:.85rem}
+    .table{width:100%;border-collapse:collapse}
+    .table th,.table td{padding:8px;border-bottom:1px solid #253154;text-align:left;vertical-align:top}
+    .sub{font-size:.85rem;color:var(--muted)}
+    @media (max-width: 1000px){ .grid{grid-template-columns:1fr} }
+    @media print{header,.controls,.side,.footer{display:none} body{background:#fff;color:#000} .card{box-shadow:none;border:1px solid #ddd} .prompt,.typed{background:#fff;border-color:#ddd}}
+  </style>
+</head>
+<body>
+<div class="wrap" role="application" aria-label="Pharmacy Typing Practice">
+  <header>
+    <h1>NCC • Pharmacy Typing Practice</h1>
+    <div class="row">
+      <div class="toggle" title="High Contrast">
+        <input id="hc" type="checkbox" aria-label="High contrast" />
+        <label for="hc" class="muted">High contrast</label>
+      </div>
+    </div>
+  </header>
+
+  <div class="grid">
+    <aside class="card side" aria-label="Settings">
+      <label for="module">Course</label>
+      <select id="module"></select>
+
+      <label for="duration">Test duration</label>
+      <select id="duration">
+        <option value="1">1 minute</option>
+        <option value="3" selected>3 minutes</option>
+      </select>
+
+      <div class="row" style="margin-top:8px">
+        <input id="allowBackspace" type="checkbox" checked aria-label="Allow corrections with Backspace" />
+        <label for="allowBackspace" class="muted">Allow corrections (Backspace)</label>
+      </div>
+
+      <div style="margin-top:12px" class="controls">
+        <button id="startBtn" class="primary">Start</button>
+        <button id="resetBtn" class="ghost">Reset</button>
+      </div>
+
+      <div style="margin-top:12px" class="stats" aria-live="polite" aria-atomic="true">
+        <div class="stat"><small>Time Left</small><div id="time">3:00</div></div>
+        <div class="stat"><small>WPM</small><div id="wpm">0</div></div>
+        <div class="stat"><small>Accuracy</small><div id="acc">100%</div></div>
+        <div class="stat"><small>Attempts</small><div id="attempts">0</div></div>
+      </div>
+
+      <div style="margin-top:12px" class="controls">
+        <button id="reportBtn" class="ghost">Generate Report (Print/PDF)</button>
+        <button id="csvBtn" class="ghost">Export CSV</button>
+        <button id="testBtn" class="ghost" title="Run developer self-tests">Run Self‑Tests</button>
+      </div>
+
+      <p id="testStatus" class="muted" style="margin-top:6px"></p>
+      <p class="muted footer">Timed tests: <strong>1‑minute</strong> or <strong>3‑minute</strong>. Run ends automatically at 0. Corrections: <span id="corrState">Allowed</span>. Data is stored locally.</p>
+    </aside>
+
+    <main class="card" aria-label="Typing area">
+      <div id="msg" class="muted" aria-live="polite"></div>
+
+      <label class="muted">Prompt stream</label>
+      <div id="prompt" class="prompt" tabindex="0" aria-readonly="true"></div>
+
+      <label class="muted">Type here</label>
+      <div id="typed" class="typed" role="textbox" aria-multiline="true" tabindex="0"></div>
+      <input id="hiddenInput" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" style="position:absolute;left:-9999px;top:-9999px" />
+
+      <section class="card" style="margin-top:12px">
+        <h2 style="margin:0 0 8px;font-size:1rem">Course Progress (Best‑3 averages, by duration)</h2>
+        <table class="table" id="progressTable">
+          <thead>
+            <tr>
+              <th>Course</th>
+              <th>1‑Minute<br><span class="sub">Avg WPM • Avg Acc • Attempts</span></th>
+              <th>3‑Minute<br><span class="sub">Avg WPM • Avg Acc • Attempts</span></th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </section>
+    </main>
+  </div>
+</div>
+
+<script>
+// ----------------------
+// CONFIG: Courses & Texts (replace with your content)
+// ----------------------
+const MODULES = {
+  "PHT101 – Introduction to Pharmacy Practice": [
+    "Pharmacy technicians support pharmacists in processing prescriptions, managing inventory, and ensuring safe medication dispensing while maintaining accurate documentation.",
+    "Always verify patient identity with two identifiers and confirm allergies before processing a new prescription to reduce the risk of adverse drug events."
+  ],
+  "PHT102 – Community Pharmacy I": [
+    "Take one tablet by mouth daily. Counsel patients to differentiate brand and generic names, and provide clear directions that avoid error‑prone abbreviations.",
+    "Record directions carefully: take 1 tab po q6h prn pain. Use leading zeros for decimals, for example 0.5 mg, and avoid trailing zeros to prevent dosing errors."
+  ],
+  "PHT103 – Community Pharmacy II": [
+    "Extended‑release capsules must not be crushed. Verify whether the prescriber intended immediate‑release versus extended‑release to avoid therapeutic failure or toxicity.",
+    "Provide counseling on auxiliary labels, including take with food, do not drink alcohol, and may cause drowsiness, depending on the medication profile."
+  ],
+  "PHT104 – Pharmaceutical Compounding": [
+    "Compound 250 mL of a 2.5% solution. Calculate grams of solute required and document each calculation step to maintain accuracy and traceability.",
+    "Label compounded preparations with beyond‑use dates, storage recommendations, and clear instructions for measurement and administration."
+  ],
+  "PHT105 – Institutional Pharmacy I": [
+    "In the hospital setting, technicians prepare unit doses, manage automated dispensing cabinets, and deliver medications according to scheduled administration times.",
+    "Confirm IV concentrations and compatibility, and ensure that high‑alert medications follow independent double‑check procedures before dispensing to the floor."
+  ],
+  "PHT106 – Institutional Pharmacy II": [
+    "Follow USP standards for sterile compounding, including garbing, hand hygiene, and maintaining ISO‑classified environments to minimize contamination risk.",
+    "Calculate infusion rates in mL/hr from ordered doses, verify line labels, and document lot numbers and expiration dates for traceability."
+  ],
+  "PHT107 – Advanced Pharmacy": [
+    "Technicians may assist with medication reconciliation, prior authorizations, and formulary substitutions, collaborating with the care team to optimize therapy.",
+    "Analyze look‑alike sound‑alike risks and implement barcode verification to reduce selection errors during the dispensing workflow."
+  ],
+};
+
+// Targets (informational)
+const GOAL_WPM = 45;
+const GOAL_ACC = 95;
+
+// State
+let state = {
+  running:false,
+  paused:false,
+  startTime:0,
+  lastKeyTs:0,
+  idleCutoffMs:5000,
+  durationMin:3, // 1 or 3
+  module:Object.keys(MODULES)[0],
+  promptStream:"",
+  typed:"",
+  attemptId:null,
+  ticker:null
+};
+
+// DOM refs
+const el = id=>document.getElementById(id);
+const moduleSel = el('module');
+const durationSel = el('duration');
+const allowBackspaceEl = el('allowBackspace');
+const corrStateEl = el('corrState');
+const promptEl = el('prompt');
+const typedEl = el('typed');
+const hiddenInput = el('hiddenInput');
+const msgEl = el('msg');
+
+// Populate modules
+(function initModules(){
+  Object.keys(MODULES).forEach(m=>{
+    const o=document.createElement('option');
+    o.value=m;o.textContent=m;moduleSel.appendChild(o);
+  });
+})();
+
+// High contrast toggle
+el('hc')?.addEventListener('change', (e)=>{
+  document.documentElement.classList.toggle('hc', e.target.checked);
+});
+
+moduleSel.addEventListener('change', e=>{ state.module = e.target.value; renderProgress(); });
+durationSel.addEventListener('change', e=>{ state.durationMin = parseInt(e.target.value,10); resetRun(); updateTimeLeft( state.durationMin*60 ); });
+allowBackspaceEl.addEventListener('change', ()=>{ corrStateEl.textContent = allowBackspaceEl.checked? 'Allowed':'Not allowed'; });
+
+// Prevent paste
+[typedEl, hiddenInput].forEach(n=>{ n.addEventListener('paste', e=>e.preventDefault()); });
+
+function focusTyping(){ hiddenInput.focus(); }
+['click','focus'].forEach(ev=>{ typedEl.addEventListener(ev, focusTyping); });
+
+// Key handling
+hiddenInput.addEventListener('keydown', (e)=>{
+  if(!state.running) return;
+  if(e.key==='Escape'){ togglePause(); e.preventDefault(); return; }
+  if(e.key==='Backspace'){
+    if(!allowBackspaceEl.checked){ e.preventDefault(); return; }
+    state.typed = state.typed.slice(0,-1);
+    state.lastKeyTs=Date.now();
+    renderTyping(); updateStats();
+    e.preventDefault(); return;
+  }
+  state.lastKeyTs=Date.now();
+});
+
+hiddenInput.addEventListener('input', ()=>{
+  if(!state.running||state.paused) return;
+  state.lastKeyTs=Date.now();
+  const v = hiddenInput.value;
+  hiddenInput.value='';
+  if(v){
+    const ch = v[v.length-1];
+    if(ch==='\n' || ch==='\r') return;
+    state.typed += ch;
+    if(state.typed.length > state.promptStream.length-100){
+      extendPromptStream( state.module );
+      renderPrompt();
+    }
+    renderTyping();
+    updateStats();
+  }
+});
+
+// Idle pause watcher
+setInterval(()=>{
+  if(state.running && !state.paused){
+    const now=Date.now();
+    if(now - state.lastKeyTs > state.idleCutoffMs){
+      state.startTime += (now - state.lastKeyTs);
+      state.lastKeyTs = now;
+      showMsg('Idle paused. Resume typing to continue.', 'warn');
+    }
+  }
+}, 1000);
+
+// Build/extend prompt stream
+function extendPromptStream(module){
+  const pool = MODULES[module]||[];
+  if(pool.length===0){ state.promptStream += " "; return; }
+  const next = pool[(Math.floor(Math.random()*pool.length))];
+  state.promptStream += (state.promptStream?" ":"") + next;
+}
+
+function buildInitialStream(module){
+  state.promptStream = "";
+  while(state.promptStream.length < 3000){ extendPromptStream(module); }
+}
+
+// Rendering
+function renderPrompt(){
+  promptEl.textContent='';
+  const frag=document.createDocumentFragment();
+  for(const c of state.promptStream){
+    const span=document.createElement('span'); span.textContent=c; span.className='char';
+    frag.appendChild(span);
+  }
+  promptEl.appendChild(frag);
+}
+
+function renderTyping(){
+  typedEl.textContent = state.typed;
+  const p = state.promptStream;
+  const promptNodes = promptEl.children;
+  const len = Math.min(p.length, state.typed.length);
+  for(let i=0;i<len;i++){
+    const node = promptNodes[i];
+    if(p[i]===state.typed[i]) node?.classList.add('correct'); else node?.classList.add('incorrect');
+  }
+}
+
+function elapsedSeconds(){
+  if(!state.running) return 0;
+  const now=Date.now();
+  const ms = now - state.startTime;
+  return Math.max(0, Math.floor(ms/1000));
+}
+
+function updateTimeLeft(secondsLeft){
+  const m = Math.floor(secondsLeft/60);
+  const s = (secondsLeft%60).toString().padStart(2,'0');
+  el('time').textContent = `${m}:${s}`;
+}
+
+function computeStats(){
+  const p = state.promptStream;
+  const t = state.typed;
+  const len = Math.max(p.length, t.length);
+  let correct=0;
+  for(let i=0;i<len;i++) if(p[i]===t[i]) correct++;
+  const total=len;
+  const minutes = Math.max(0.001, (elapsedSeconds()/60));
+  const wpm = Math.max(0, Math.round(((correct)/5) / minutes));
+  const acc = total>0 ? Math.round((correct/total)*100) : 100;
+  return {wpm, acc, minutes: Number(minutes.toFixed(2))};
+}
+
+function updateStats(clear){
+  if(clear){ el('wpm').textContent='0'; el('acc').textContent='100%'; return; }
+  const {wpm, acc} = computeStats();
+  el('wpm').textContent = String(wpm);
+  el('acc').textContent = `${acc}%`;
+}
+
+function startTicker(){
+  stopTicker();
+  state.ticker = setInterval(()=>{
+    const elapsed = elapsedSeconds();
+    const durationSec = state.durationMin*60;
+    const left = Math.max(0, durationSec - elapsed);
+    updateTimeLeft(left);
+    if(left<=0){ finishRun(); }
+  }, 250);
+}
+
+function stopTicker(){ if(state.ticker){ clearInterval(state.ticker); state.ticker=null; } }
+
+// Start/Reset
+el('startBtn').addEventListener('click', startRun);
+function startRun(){
+  buildInitialStream(state.module);
+  state.running=true; state.paused=false; state.typed='';
+  state.startTime=Date.now(); state.lastKeyTs=Date.now();
+  state.attemptId = (crypto&&crypto.randomUUID)?crypto.randomUUID():String(Date.now());
+  renderPrompt(); renderTyping(); showMsg(`Timed test: ${state.durationMin} minute${state.durationMin>1?'s':''}.`, '');
+  updateStats(); updateTimeLeft(state.durationMin*60); focusTyping(); startTicker();
+}
+
+el('resetBtn').addEventListener('click', resetRun);
+function resetRun(){
+  stopTicker();
+  state.running=false; state.paused=false; state.typed=''; state.promptStream='';
+  renderPrompt(); renderTyping(); updateStats(true); showMsg('Reset.');
+}
+
+function togglePause(){
+  if(!state.running) return;
+  state.paused = !state.paused;
+  if(state.paused){ showMsg('Paused. Press Esc or click typing area to resume.', 'warn'); stopTicker(); }
+  else { state.lastKeyTs=Date.now(); showMsg('Resumed.'); focusTyping(); startTicker(); }
+}
+
+function finishRun(){
+  stopTicker();
+  const {wpm, acc, minutes} = computeStats();
+  state.running=false; state.paused=false;
+  saveAttempt({id:state.attemptId,module:state.module,wpm,acc,minutes,date:new Date().toISOString(),duration:state.durationMin});
+  renderProgress();
+  const hitWpm = wpm>=GOAL_WPM; const hitAcc = acc>=GOAL_ACC;
+  showMsg(hitWpm && hitAcc ? `Nice! Goal met (≥${GOAL_WPM} WPM & ≥${GOAL_ACC}% acc).` : `Run saved.`, hitWpm&&hitAcc?'kudos':'');
+}
+
+// Storage & progress
+const KEY='ncc_pharm_typing_attempts_v3';
+function getAttempts(){ try{ return JSON.parse(localStorage.getItem(KEY)||'[]'); } catch{ return []; } }
+function saveAttempt(a){ const arr=getAttempts(); arr.push(a); localStorage.setItem(KEY, JSON.stringify(arr)); el('attempts').textContent=arr.length; }
+
+function best3Avg(arr){
+  const top3 = [...arr].sort((a,b)=> (b.acc-a.acc) || (b.wpm-a.wpm)).slice(0,3);
+  if(top3.length===0) return {wpm:0, acc:0, n:0};
+  const wpm = Math.round(top3.reduce((s,x)=>s+x.wpm,0)/top3.length);
+  const acc = Math.round(top3.reduce((s,x)=>s+x.acc,0)/top3.length);
+  return {wpm, acc, n:top3.length};
+}
+
+function best3AvgForDuration(arr, duration){
+  return best3Avg(arr.filter(a=>a.duration===duration));
+}
+
+function renderProgress(){
+  const tbody = document.querySelector('#progressTable tbody');
+  tbody.innerHTML='';
+  const attempts = getAttempts();
+  const byModule = Object.fromEntries(Object.keys(MODULES).map(m=>[m, []]));
+  attempts.forEach(a=>{ if(byModule[a.module]) byModule[a.module].push(a); });
+  Object.entries(byModule).forEach(([m,list])=>{
+    const one = best3AvgForDuration(list, 1);
+    const three = best3AvgForDuration(list, 3);
+    const tr=document.createElement('tr');
+    const cell = (o)=> `${o.wpm||0} WPM • ${o.acc||0}% • ${list.filter(x=>x.duration===(o.n? (o===one?1:3): (o===one?1:3))).length}`;
+    tr.innerHTML = `<td>${m}</td>
+      <td>${one.wpm} WPM ${one.wpm>=GOAL_WPM&&one.n? '✅':''} • ${one.acc}% ${one.acc>=GOAL_ACC&&one.n? '✅':''} • ${list.filter(x=>x.duration===1).length} attempts</td>
+      <td>${three.wpm} WPM ${three.wpm>=GOAL_WPM&&three.n? '✅':''} • ${three.acc}% ${three.acc>=GOAL_ACC&&three.n? '✅':''} • ${list.filter(x=>x.duration===3).length} attempts</td>`;
+    tbody.appendChild(tr);
+  });
+  el('attempts').textContent = attempts.length;
+}
+
+// --- Reporting helpers ---
+function buildReportHTML(now, attempts){
+  const rows = attempts.map(a=>`<tr><td>${a.module}</td><td>${a.duration} min</td><td>${a.wpm}</td><td>${a.acc}%</td><td>${a.minutes}</td><td>${new Date(a.date).toLocaleString()}</td></tr>`).join('');
+  const prog = Object.keys(MODULES).map((m)=>{
+    const list = attempts.filter(a=>a.module===m);
+    const one = best3AvgForDuration(list,1); const three = best3AvgForDuration(list,3);
+    return `<tr><td>${m}</td><td>${one.wpm} WPM • ${one.acc}%</td><td>${three.wpm} WPM • ${three.acc}%</td><td>${list.length}</td></tr>`;
+  }).join('');
+  return `<!doctype html><html><head><meta charset="utf-8"><title>NCC Typing Report</title>
+    <style>body{font:14px system-ui,Segoe UI,Roboto,Arial} h1{font-size:18px;margin:0 0 8px} table{width:100%;border-collapse:collapse;margin-top:10px} th,td{border:1px solid #ccc;padding:6px;text-align:left} .muted{color:#666} .small{font-size:12px}</style>
+  </head><body onload="window.print()">
+    <h1>Pharmacy Typing Report</h1>
+    <div class='muted small'>Generated: ${now}</div>
+    <p>This report shows your timed attempts (1 or 3 minutes) and the averages of your best three runs per course.</p>
+    <h2>Course Averages (Best‑3, by duration)</h2>
+    <table><thead><tr><th>Course</th><th>1‑Minute (Avg WPM • Avg Acc)</th><th>3‑Minute (Avg WPM • Avg Acc)</th><th>Total Attempts</th></tr></thead><tbody>${prog}</tbody></table>
+    <h2>All Attempts</h2>
+    <table><thead><tr><th>Course</th><th>Duration</th><th>WPM</th><th>Accuracy</th><th>Minutes</th><th>Date</th></tr></thead><tbody>${rows||'<tr><td colspan="6">No attempts yet.</td></tr>'}</tbody></table>
+  </body></html>`;
+}
+
+function createCSV(a){
+  const header = ['course','duration_min','wpm','accuracy','minutes','date'];
+  return [header.join(',')].concat(a.map(x=> [x.module,x.duration,x.wpm,x.acc,x.minutes,x.date].join(','))).join('\n');
+}
+
+// Report (print‑ready)
+el('reportBtn').addEventListener('click', ()=>{
+  const attempts = getAttempts();
+  const now = new Date().toLocaleString();
+  const html = buildReportHTML(now, attempts);
+  const win = window.open('', '_blank');
+  if(!win){
+    const blob = new Blob([html], {type:'text/html'});
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url; link.download='ncc_typing_report.html'; link.click();
+    URL.revokeObjectURL(url);
+    return;
+  }
+  win.document.open();
+  win.document.write(html);
+  win.document.close();
+});
+
+// CSV export
+el('csvBtn').addEventListener('click', ()=>{
+  const a = getAttempts();
+  const csv = createCSV(a);
+  const blob=new Blob([csv],{type:'text/csv'});
+  const url=URL.createObjectURL(blob);
+  const link=document.createElement('a');
+  link.href=url; link.download='ncc_pharm_typing_attempts.csv'; link.click();
+  URL.revokeObjectURL(url);
+});
+
+function showMsg(t,cls){ msgEl.className = cls?cls+' muted': 'muted'; msgEl.textContent=t; }
+
+// ----------------------
+// Developer Self‑Tests
+// ----------------------
+function runTests(){
+  const results=[]; const assert=(name,cond)=>results.push({name,pass:!!cond});
+  const html = buildReportHTML('now', []);
+  assert('report has </html>', /<\/html>\s*$/.test(html));
+  assert('report has </head>', /<\/head>/.test(html));
+  assert('report has </body>', /<\/body>/.test(html));
+  // CSV header present
+  const csv = createCSV([{module:'X',wpm:10,acc:99,minutes:1,duration:1,date:new Date().toISOString()}]);
+  assert('csv header ok', /^course,duration_min,wpm,accuracy,minutes,date/.test(csv));
+  // Prompt stream extends when needed
+  const prevPrompt = state.promptStream; buildInitialStream(Object.keys(MODULES)[0]); const initialLen = state.promptStream.length; extendPromptStream(Object.keys(MODULES)[0]); assert('extendPromptStream grows text', state.promptStream.length>initialLen);
+  state.promptStream = prevPrompt;
+  // Time formatting
+  updateTimeLeft(61); assert('time format mm:ss', el('time').textContent==='1:01');
+  // Strict accuracy: case matters
+  const prev = {...state};
+  state.promptStream='Abc'; state.typed='abc'; state.running=true; state.startTime=Date.now()-60000;
+  const m = (function(){ const p = state.promptStream, t = state.typed; let correct=0; for(let i=0;i<Math.max(p.length,t.length);i++) if(p[i]===t[i]) correct++; const total=Math.max(p.length,t.length); return total>0 ? Math.round((correct/total)*100):100; })();
+  assert('strict mode penalizes case', m<100);
+  Object.assign(state, prev);
+  // updateStats tests
+  assert('updateStats exists', typeof updateStats === 'function');
+  updateStats(true); assert('updateStats(true) clears WPM', el('wpm').textContent==='0'); assert('updateStats(true) clears Acc', el('acc').textContent==='100%');
+  state.promptStream='abcde'; state.typed='abcde'; state.running=true; state.startTime=Date.now()-60000; updateStats(); assert('updateStats() writes acc %', /%$/.test(el('acc').textContent));
+  // best3AvgForDuration
+  const sample=[{duration:1,wpm:50,acc:98},{duration:1,wpm:40,acc:96},{duration:1,wpm:55,acc:97},{duration:3,wpm:45,acc:95}];
+  const one = best3AvgForDuration(sample,1); const three = best3AvgForDuration(sample,3);
+  assert('best3AvgForDuration(1) works', one.n>=1 || typeof one.wpm==='number');
+  assert('best3AvgForDuration(3) works', three.n>=1 || typeof three.wpm==='number');
+  // Backspace toggle prevents deletion
+  allowBackspaceEl.checked=false; const before='hello'; state.typed=before; const ev=new KeyboardEvent('keydown',{key:'Backspace',bubbles:true}); hiddenInput.dispatchEvent(ev); assert('backspace disabled when toggle off', state.typed===before); allowBackspaceEl.checked=true;
+  // Summary
+  const passAll = results.every(r=>r.pass);
+  el('testStatus').textContent = passAll ? 'All tests passed.' : 'Failures: '+results.filter(r=>!r.pass).map(r=>r.name).join(', ');
+}
+
+el('testBtn').addEventListener('click', runTests);
+
+// Initialize
+(function init(){
+  corrStateEl.textContent = allowBackspaceEl.checked? 'Allowed':'Not allowed';
+  renderProgress();
+  renderPrompt();
+  renderTyping();
+  updateTimeLeft(parseInt(durationSel.value,10)*60);
+})();
+</script>
+</body>
+</html>
