@@ -88,7 +88,7 @@
         <button id="csvBtn" class="ghost">Export CSV</button>
       </div>
 
-      <p class="muted footer">Timed tests: <strong>1‑minute</strong> or <strong>3‑minute</strong>. Run ends automatically at 0. Corrections: <span id="corrState">Allowed</span>. Data is stored locally.</p>
+      <p class="muted footer">Timed tests: <strong>1‑minute</strong> or <strong>3‑minute</strong>. Run ends automatically at 0. Corrections: <span id="corrState">Allowed</span>. <strong>Data is not saved between visits.</strong></p>
     </aside>
 
     <main class="card" aria-label="Typing area">
@@ -164,12 +164,7 @@ const MODULES = {
 const GOAL_WPM = 45;
 const GOAL_ACC = 95;
 
-// Storage keys
-const KEY_ATTEMPTS='ncc_pharm_typing_attempts_v5';
-const KEY_NAME='ncc_pharm_typing_student_name_v1';
-const KEY_ROTATION='ncc_pharm_prompt_rotation_v1';
-
-// State
+// State (session-only)
 let state = {
   running:false,
   paused:false,
@@ -184,6 +179,10 @@ let state = {
   ticker:null
 };
 
+// Session-only data (no persistence across page loads)
+let sessionAttempts = [];
+let rotationMap = {};
+
 // DOM refs
 const el = id=>document.getElementById(id);
 const moduleSel = el('module');
@@ -196,9 +195,9 @@ const hiddenInput = el('hiddenInput');
 const msgEl = el('msg');
 const studentNameEl = el('studentName');
 
-// Helpers: rotation persistence per course
-function getRotation(){ try{ return JSON.parse(localStorage.getItem(KEY_ROTATION)||'{}'); } catch{ return {}; } }
-function setRotation(obj){ localStorage.setItem(KEY_ROTATION, JSON.stringify(obj)); }
+// Helpers: rotation (session-only) per course
+function getRotation(){ return rotationMap; }
+function setRotation(obj){ rotationMap = obj; }
 function nextPromptIndex(module){
   const rot = getRotation();
   const n = (rot[module] ?? -1) + 1;
@@ -217,8 +216,7 @@ function nextPromptIndex(module){
     o.value=m;o.textContent=m;moduleSel.appendChild(o);
   });
   state.module = modules[0];
-  const saved = localStorage.getItem(KEY_NAME);
-  if(saved) studentNameEl.value = saved;
+  // Session-only: do not restore student name
 })();
 
 // High contrast toggle
@@ -226,10 +224,8 @@ el('hc')?.addEventListener('change', (e)=>{
   document.documentElement.classList.toggle('hc', e.target.checked);
 });
 
-// Persist name on change
-studentNameEl.addEventListener('input', ()=>{
-  localStorage.setItem(KEY_NAME, studentNameEl.value.trim());
-});
+// Name is session-only; do not persist
+studentNameEl.addEventListener('input', ()=>{ /* no-op persistence */ });
 
 moduleSel.addEventListener('change', e=>{ state.module = e.target.value; renderProgress(); });
 durationSel.addEventListener('change', e=>{ state.durationMin = parseInt(e.target.value,10); resetRun(); updateTimeLeft( state.durationMin*60 ); });
@@ -420,9 +416,9 @@ function finishRun(){
   showMsg(hitWpm && hitAcc ? `Nice! Goal met (≥${GOAL_WPM} WPM & ≥${GOAL_ACC}% acc).` : `Run saved.`, hitWpm&&hitAcc?'kudos':'');
 }
 
-// Storage & progress
-function getAttempts(){ try{ return JSON.parse(localStorage.getItem(KEY_ATTEMPTS)||'[]'); } catch{ return []; } }
-function saveAttempt(a){ const arr=getAttempts(); arr.push(a); localStorage.setItem(KEY_ATTEMPTS, JSON.stringify(arr)); el('attempts').textContent=arr.length; }
+// Storage & progress (session-only)
+function getAttempts(){ return sessionAttempts; }
+function saveAttempt(a){ sessionAttempts.push(a); el('attempts').textContent=sessionAttempts.length; }
 
 function best3Avg(arr){
   const top3 = [...arr].sort((a,b)=> (b.acc-a.acc) || (b.wpm-a.wpm)).slice(0,3);
@@ -513,7 +509,7 @@ el('csvBtn').addEventListener('click', ()=>{
 function showMsg(t,cls){ msgEl.className = cls?cls+' muted': 'muted'; msgEl.textContent=t; }
 
 // ----------------------
-// (Optional) Dev self-tests — run only if URL hash is #devtests
+// Optional Dev self-tests — run only if URL hash is #devtests
 // ----------------------
 (function optionalDevTests(){
   if(location.hash !== '#devtests') return;
@@ -525,6 +521,10 @@ function showMsg(t,cls){ msgEl.className = cls?cls+' muted': 'muted'; msgEl.text
   const prev={...state}; state.promptStream='abc'; renderPrompt(); state.typed='abx'; state.running=true; state.startTime=Date.now()-60000; renderTyping(); let m=computeStats(); assert('66% with abx', m.acc===66);
   state.typed='ab'; renderTyping(); m=computeStats(); assert('after backspace to ab, 100% of typed', m.acc===100);
   state.typed+='c'; renderTyping(); m=computeStats(); assert('after typing c, 100%', m.acc===100);
+  // report HTML well-formed
+  const html = buildReportHTML('now', [], 'Alice', 'PHT101 – Introduction to Pharmacy Practice');
+  assert('report has </html>', /<\/html>\s*$/.test(html));
+  assert('no stray brace before </body>', !/}\s*<\/body>/.test(html));
   Object.assign(state, prev);
   console.log('DEV TESTS:', results);
 })();
