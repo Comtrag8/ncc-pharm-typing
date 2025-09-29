@@ -41,7 +41,7 @@
   </style>
 </head>
 <body>
-<div class="wrap" role="application" aria-label="Pharmacy Typing Practice">
+<div class="wrap" id="appRoot" role="application" aria-label="Pharmacy Typing Practice">
   <header>
     <h1>NCC • Pharmacy Typing Practice</h1>
     <div class="row">
@@ -54,8 +54,11 @@
 
   <div class="grid">
     <aside class="card side" aria-label="Settings">
+      <label for="studentName">Student name</label>
+      <input id="studentName" type="text" placeholder="First Last" />
+
       <label for="module">Course</label>
-      <select id="module"></select>
+      <select id="module" aria-label="Course selector"></select>
 
       <label for="duration">Test duration</label>
       <select id="duration">
@@ -76,7 +79,7 @@
       <div style="margin-top:12px" class="stats" aria-live="polite" aria-atomic="true">
         <div class="stat"><small>Time Left</small><div id="time">3:00</div></div>
         <div class="stat"><small>WPM</small><div id="wpm">0</div></div>
-        <div class="stat"><small>Accuracy</small><div id="acc">100%</div></div>
+        <div class="stat"><small>Accuracy (correct)</small><div id="acc">100%</div></div>
         <div class="stat"><small>Attempts</small><div id="attempts">0</div></div>
       </div>
 
@@ -119,42 +122,54 @@
 
 <script>
 // ----------------------
-// CONFIG: Courses & Texts (replace with your content)
+// CONFIG: Courses & 3 rotating texts each
 // ----------------------
 const MODULES = {
   "PHT101 – Introduction to Pharmacy Practice": [
     "Pharmacy technicians support pharmacists in processing prescriptions, managing inventory, and ensuring safe medication dispensing while maintaining accurate documentation.",
-    "Always verify patient identity with two identifiers and confirm allergies before processing a new prescription to reduce the risk of adverse drug events."
+    "Maintain professionalism, protect patient privacy, and follow HIPAA when accessing profiles or discussing medications at the counter or over the phone.",
+    "Always verify two patient identifiers and confirm allergies before processing new prescriptions to reduce the risk of adverse drug events."
   ],
   "PHT102 – Community Pharmacy I": [
-    "Take one tablet by mouth daily. Counsel patients to differentiate brand and generic names, and provide clear directions that avoid error‑prone abbreviations.",
-    "Record directions carefully: take 1 tab po q6h prn pain. Use leading zeros for decimals, for example 0.5 mg, and avoid trailing zeros to prevent dosing errors."
+    "Take one tablet by mouth daily. Counsel patients to differentiate brand and generic names and provide clear directions that avoid error‑prone abbreviations.",
+    "Record directions carefully: take 1 tab po q6h prn pain. Use leading zeros for decimals, for example 0.5 mg, and avoid trailing zeros to prevent dosing errors.",
+    "Evaluate refills for early or late pickup trends and contact prescribers when therapy gaps or duplicate therapies are identified during processing."
   ],
   "PHT103 – Community Pharmacy II": [
     "Extended‑release capsules must not be crushed. Verify whether the prescriber intended immediate‑release versus extended‑release to avoid therapeutic failure or toxicity.",
-    "Provide counseling on auxiliary labels, including take with food, do not drink alcohol, and may cause drowsiness, depending on the medication profile."
+    "Provide counseling on auxiliary labels such as take with food, do not drink alcohol, and may cause drowsiness depending on the medication profile.",
+    "Medicare Part D plans may require prior authorization. Document clinical justifications and communicate alternatives when coverage is denied."
   ],
   "PHT104 – Pharmaceutical Compounding": [
     "Compound 250 mL of a 2.5% solution. Calculate grams of solute required and document each calculation step to maintain accuracy and traceability.",
-    "Label compounded preparations with beyond‑use dates, storage recommendations, and clear instructions for measurement and administration."
+    "Label compounded preparations with beyond‑use dates, storage recommendations, and clear instructions for measurement and administration.",
+    "Follow appropriate PPE, measure ingredients precisely, and record lot numbers and expiration dates for all components used in the formulation."
   ],
   "PHT105 – Institutional Pharmacy I": [
     "In the hospital setting, technicians prepare unit doses, manage automated dispensing cabinets, and deliver medications according to scheduled administration times.",
-    "Confirm IV concentrations and compatibility, and ensure that high‑alert medications follow independent double‑check procedures before dispensing to the floor."
+    "Confirm IV concentrations and compatibility, and ensure that high‑alert medications follow independent double‑check procedures before dispensing to the floor.",
+    "Use barcode medication administration and machine‑readable labels to reduce selection errors and improve traceability throughout the medication use process."
   ],
   "PHT106 – Institutional Pharmacy II": [
     "Follow USP standards for sterile compounding, including garbing, hand hygiene, and maintaining ISO‑classified environments to minimize contamination risk.",
-    "Calculate infusion rates in mL/hr from ordered doses, verify line labels, and document lot numbers and expiration dates for traceability."
+    "Calculate infusion rates in mL/hr from ordered doses, verify line labels, and document lot numbers and expiration dates for traceability.",
+    "Perform cleaning and disinfection of PECs at appropriate intervals and document surface sampling results according to facility policy."
   ],
   "PHT107 – Advanced Pharmacy": [
     "Technicians may assist with medication reconciliation, prior authorizations, and formulary substitutions, collaborating with the care team to optimize therapy.",
-    "Analyze look‑alike sound‑alike risks and implement barcode verification to reduce selection errors during the dispensing workflow."
+    "Analyze look‑alike sound‑alike risks and implement barcode verification to reduce selection errors during the dispensing workflow.",
+    "Monitor drug shortages and assist with therapeutic interchange by verifying equivalence and updating automation databases accordingly."
   ],
 };
 
 // Targets (informational)
 const GOAL_WPM = 45;
 const GOAL_ACC = 95;
+
+// Storage keys
+const KEY_ATTEMPTS='ncc_pharm_typing_attempts_v5';
+const KEY_NAME='ncc_pharm_typing_student_name_v1';
+const KEY_ROTATION='ncc_pharm_prompt_rotation_v1';
 
 // State
 let state = {
@@ -181,18 +196,41 @@ const promptEl = el('prompt');
 const typedEl = el('typed');
 const hiddenInput = el('hiddenInput');
 const msgEl = el('msg');
+const studentNameEl = el('studentName');
 
-// Populate modules
+// Helpers: rotation persistence per course
+function getRotation(){ try{ return JSON.parse(localStorage.getItem(KEY_ROTATION)||'{}'); } catch{ return {}; } }
+function setRotation(obj){ localStorage.setItem(KEY_ROTATION, JSON.stringify(obj)); }
+function nextPromptIndex(module){
+  const rot = getRotation();
+  const n = (rot[module] ?? -1) + 1;
+  const len = (MODULES[module]||[]).length || 1;
+  rot[module] = n % len;
+  setRotation(rot);
+  return rot[module];
+}
+
+// Populate modules and student name
 (function initModules(){
-  Object.keys(MODULES).forEach(m=>{
+  const modules = Object.keys(MODULES);
+  moduleSel.innerHTML='';
+  modules.forEach(m=>{
     const o=document.createElement('option');
     o.value=m;o.textContent=m;moduleSel.appendChild(o);
   });
+  state.module = modules[0];
+  const saved = localStorage.getItem(KEY_NAME);
+  if(saved) studentNameEl.value = saved;
 })();
 
 // High contrast toggle
 el('hc')?.addEventListener('change', (e)=>{
   document.documentElement.classList.toggle('hc', e.target.checked);
+});
+
+// Persist name on change
+studentNameEl.addEventListener('input', ()=>{
+  localStorage.setItem(KEY_NAME, studentNameEl.value.trim());
 });
 
 moduleSel.addEventListener('change', e=>{ state.module = e.target.value; renderProgress(); });
@@ -249,7 +287,7 @@ setInterval(()=>{
   }
 }, 1000);
 
-// Build/extend prompt stream
+// Build/extend prompt stream with rotation seed
 function extendPromptStream(module){
   const pool = MODULES[module]||[];
   if(pool.length===0){ state.promptStream += " "; return; }
@@ -259,6 +297,11 @@ function extendPromptStream(module){
 
 function buildInitialStream(module){
   state.promptStream = "";
+  // Start with the rotated seed prompt for variety
+  const idx = nextPromptIndex(module);
+  const seed = (MODULES[module]||[])[idx] || "";
+  state.promptStream = seed;
+  // Then extend to a large buffer
   while(state.promptStream.length < 3000){ extendPromptStream(module); }
 }
 
@@ -306,7 +349,7 @@ function computeStats(){
   const total=len;
   const minutes = Math.max(0.001, (elapsedSeconds()/60));
   const wpm = Math.max(0, Math.round(((correct)/5) / minutes));
-  const acc = total>0 ? Math.round((correct/total)*100) : 100;
+  const acc = total>0 ? Math.round((correct/total)*100) : 100; // % correct
   return {wpm, acc, minutes: Number(minutes.toFixed(2))};
 }
 
@@ -366,9 +409,8 @@ function finishRun(){
 }
 
 // Storage & progress
-const KEY='ncc_pharm_typing_attempts_v3';
-function getAttempts(){ try{ return JSON.parse(localStorage.getItem(KEY)||'[]'); } catch{ return []; } }
-function saveAttempt(a){ const arr=getAttempts(); arr.push(a); localStorage.setItem(KEY, JSON.stringify(arr)); el('attempts').textContent=arr.length; }
+function getAttempts(){ try{ return JSON.parse(localStorage.getItem(KEY_ATTEMPTS)||'[]'); } catch{ return []; } }
+function saveAttempt(a){ const arr=getAttempts(); arr.push(a); localStorage.setItem(KEY_ATTEMPTS, JSON.stringify(arr)); el('attempts').textContent=arr.length; }
 
 function best3Avg(arr){
   const top3 = [...arr].sort((a,b)=> (b.acc-a.acc) || (b.wpm-a.wpm)).slice(0,3);
@@ -392,7 +434,6 @@ function renderProgress(){
     const one = best3AvgForDuration(list, 1);
     const three = best3AvgForDuration(list, 3);
     const tr=document.createElement('tr');
-    const cell = (o)=> `${o.wpm||0} WPM • ${o.acc||0}% • ${list.filter(x=>x.duration===(o.n? (o===one?1:3): (o===one?1:3))).length}`;
     tr.innerHTML = `<td>${m}</td>
       <td>${one.wpm} WPM ${one.wpm>=GOAL_WPM&&one.n? '✅':''} • ${one.acc}% ${one.acc>=GOAL_ACC&&one.n? '✅':''} • ${list.filter(x=>x.duration===1).length} attempts</td>
       <td>${three.wpm} WPM ${three.wpm>=GOAL_WPM&&three.n? '✅':''} • ${three.acc}% ${three.acc>=GOAL_ACC&&three.n? '✅':''} • ${list.filter(x=>x.duration===3).length} attempts</td>`;
@@ -402,7 +443,8 @@ function renderProgress(){
 }
 
 // --- Reporting helpers ---
-function buildReportHTML(now, attempts){
+function buildReportHTML(now, attempts, studentName){
+  const safeName = (studentName||'').replace(/[<>]/g,'');
   const rows = attempts.map(a=>`<tr><td>${a.module}</td><td>${a.duration} min</td><td>${a.wpm}</td><td>${a.acc}%</td><td>${a.minutes}</td><td>${new Date(a.date).toLocaleString()}</td></tr>`).join('');
   const prog = Object.keys(MODULES).map((m)=>{
     const list = attempts.filter(a=>a.module===m);
@@ -414,6 +456,7 @@ function buildReportHTML(now, attempts){
   </head><body onload="window.print()">
     <h1>Pharmacy Typing Report</h1>
     <div class='muted small'>Generated: ${now}</div>
+    <div><strong>Student:</strong> ${safeName||'<em>(not provided)</em>'}</div>
     <p>This report shows your timed attempts (1 or 3 minutes) and the averages of your best three runs per course.</p>
     <h2>Course Averages (Best‑3, by duration)</h2>
     <table><thead><tr><th>Course</th><th>1‑Minute (Avg WPM • Avg Acc)</th><th>3‑Minute (Avg WPM • Avg Acc)</th><th>Total Attempts</th></tr></thead><tbody>${prog}</tbody></table>
@@ -422,16 +465,16 @@ function buildReportHTML(now, attempts){
   </body></html>`;
 }
 
-function createCSV(a){
-  const header = ['course','duration_min','wpm','accuracy','minutes','date'];
-  return [header.join(',')].concat(a.map(x=> [x.module,x.duration,x.wpm,x.acc,x.minutes,x.date].join(','))).join('\n');
+function createCSV(a, studentName){
+  const header = ['student_name','course','duration_min','wpm','accuracy','minutes','date'];
+  return [header.join(',')].concat(a.map(x=> [JSON.stringify(studentName||''),JSON.stringify(x.module),x.duration,x.wpm,x.acc,x.minutes,x.date].join(','))).join('\n');
 }
 
 // Report (print‑ready)
 el('reportBtn').addEventListener('click', ()=>{
   const attempts = getAttempts();
   const now = new Date().toLocaleString();
-  const html = buildReportHTML(now, attempts);
+  const html = buildReportHTML(now, attempts, studentNameEl.value.trim());
   const win = window.open('', '_blank');
   if(!win){
     const blob = new Blob([html], {type:'text/html'});
@@ -449,7 +492,7 @@ el('reportBtn').addEventListener('click', ()=>{
 // CSV export
 el('csvBtn').addEventListener('click', ()=>{
   const a = getAttempts();
-  const csv = createCSV(a);
+  const csv = createCSV(a, studentNameEl.value.trim());
   const blob=new Blob([csv],{type:'text/csv'});
   const url=URL.createObjectURL(blob);
   const link=document.createElement('a');
@@ -464,44 +507,50 @@ function showMsg(t,cls){ msgEl.className = cls?cls+' muted': 'muted'; msgEl.text
 // ----------------------
 function runTests(){
   const results=[]; const assert=(name,cond)=>results.push({name,pass:!!cond});
-  const html = buildReportHTML('now', []);
+  // Dropdown populated
+  assert('module dropdown populated', document.querySelectorAll('#module option').length >= 7);
+  // Report integrity & student
+  const html = buildReportHTML('now', [], 'Alice Student');
   assert('report has </html>', /<\/html>\s*$/.test(html));
+  assert('report has student name', /Alice Student/.test(html));
   assert('report has </head>', /<\/head>/.test(html));
   assert('report has </body>', /<\/body>/.test(html));
   // CSV header present
-  const csv = createCSV([{module:'X',wpm:10,acc:99,minutes:1,duration:1,date:new Date().toISOString()}]);
-  assert('csv header ok', /^course,duration_min,wpm,accuracy,minutes,date/.test(csv));
+  const csv = createCSV([{module:'X',wpm:10,acc:99,minutes:1,duration:1,date:new Date().toISOString()}], 'Bob');
+  assert('csv header ok', /^student_name,course,duration_min,wpm,accuracy,minutes,date/.test(csv));
+  assert('csv includes name', /Bob/.test(csv));
   // Prompt stream extends when needed
   const prevPrompt = state.promptStream; buildInitialStream(Object.keys(MODULES)[0]); const initialLen = state.promptStream.length; extendPromptStream(Object.keys(MODULES)[0]); assert('extendPromptStream grows text', state.promptStream.length>initialLen);
   state.promptStream = prevPrompt;
   // Time formatting
   updateTimeLeft(61); assert('time format mm:ss', el('time').textContent==='1:01');
-  // Strict accuracy: case matters
+  // Accuracy correctness checks (% CORRECT)
   const prev = {...state};
-  state.promptStream='Abc'; state.typed='abc'; state.running=true; state.startTime=Date.now()-60000;
-  const m = (function(){ const p = state.promptStream, t = state.typed; let correct=0; for(let i=0;i<Math.max(p.length,t.length);i++) if(p[i]===t[i]) correct++; const total=Math.max(p.length,t.length); return total>0 ? Math.round((correct/total)*100):100; })();
-  assert('strict mode penalizes case', m<100);
+  state.promptStream='abc'; state.typed='abc'; state.running=true; state.startTime=Date.now()-60000; // 1 min
+  let m = computeStats();
+  assert('accuracy 100 when identical', m.acc===100);
+  state.promptStream='abc'; state.typed='abb'; m = computeStats();
+  assert('accuracy 66 when 2/3 correct', m.acc===66);
   Object.assign(state, prev);
   // updateStats tests
   assert('updateStats exists', typeof updateStats === 'function');
   updateStats(true); assert('updateStats(true) clears WPM', el('wpm').textContent==='0'); assert('updateStats(true) clears Acc', el('acc').textContent==='100%');
   state.promptStream='abcde'; state.typed='abcde'; state.running=true; state.startTime=Date.now()-60000; updateStats(); assert('updateStats() writes acc %', /%$/.test(el('acc').textContent));
-  // best3AvgForDuration
-  const sample=[{duration:1,wpm:50,acc:98},{duration:1,wpm:40,acc:96},{duration:1,wpm:55,acc:97},{duration:3,wpm:45,acc:95}];
-  const one = best3AvgForDuration(sample,1); const three = best3AvgForDuration(sample,3);
-  assert('best3AvgForDuration(1) works', one.n>=1 || typeof one.wpm==='number');
-  assert('best3AvgForDuration(3) works', three.n>=1 || typeof three.wpm==='number');
+  // Rotation increments per attempt
+  const before = getRotation()[state.module] ?? -1; const idx = nextPromptIndex(state.module); const after = getRotation()[state.module];
+  assert('rotation increments', typeof idx==='number' && after !== before);
   // Backspace toggle prevents deletion
-  allowBackspaceEl.checked=false; const before='hello'; state.typed=before; const ev=new KeyboardEvent('keydown',{key:'Backspace',bubbles:true}); hiddenInput.dispatchEvent(ev); assert('backspace disabled when toggle off', state.typed===before); allowBackspaceEl.checked=true;
+  allowBackspaceEl.checked=false; const prevText='hello'; state.typed=prevText; const ev=new KeyboardEvent('keydown',{key:'Backspace',bubbles:true}); hiddenInput.dispatchEvent(ev); assert('backspace disabled when toggle off', state.typed===prevText); allowBackspaceEl.checked=true;
   // Summary
   const passAll = results.every(r=>r.pass);
   el('testStatus').textContent = passAll ? 'All tests passed.' : 'Failures: '+results.filter(r=>!r.pass).map(r=>r.name).join(', ');
 }
 
-el('testBtn').addEventListener('click', runTests);
+document.getElementById('testBtn').addEventListener('click', runTests);
 
 // Initialize
 (function init(){
+  const corrStateEl = document.getElementById('corrState');
   corrStateEl.textContent = allowBackspaceEl.checked? 'Allowed':'Not allowed';
   renderProgress();
   renderPrompt();
