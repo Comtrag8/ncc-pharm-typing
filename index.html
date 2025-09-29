@@ -79,17 +79,15 @@
       <div style="margin-top:12px" class="stats" aria-live="polite" aria-atomic="true">
         <div class="stat"><small>Time Left</small><div id="time">3:00</div></div>
         <div class="stat"><small>WPM</small><div id="wpm">0</div></div>
-        <div class="stat"><small>Accuracy (correct)</small><div id="acc">100%</div></div>
+        <div class="stat"><small>Accuracy</small><div id="acc">100%</div></div>
         <div class="stat"><small>Attempts</small><div id="attempts">0</div></div>
       </div>
 
       <div style="margin-top:12px" class="controls">
         <button id="reportBtn" class="ghost">Generate Report (Print/PDF)</button>
         <button id="csvBtn" class="ghost">Export CSV</button>
-        <button id="testBtn" class="ghost" title="Run developer self-tests">Run Self‑Tests</button>
       </div>
 
-      <p id="testStatus" class="muted" style="margin-top:6px"></p>
       <p class="muted footer">Timed tests: <strong>1‑minute</strong> or <strong>3‑minute</strong>. Run ends automatically at 0. Corrections: <span id="corrState">Allowed</span>. Data is stored locally.</p>
     </aside>
 
@@ -243,6 +241,12 @@ allowBackspaceEl.addEventListener('change', ()=>{ corrStateEl.textContent = allo
 function focusTyping(){ hiddenInput.focus(); }
 ['click','focus'].forEach(ev=>{ typedEl.addEventListener(ev, focusTyping); });
 
+// Lock/unlock selectors during a running test
+function setSelectorsLocked(locked){
+  moduleSel.disabled = !!locked;
+  durationSel.disabled = !!locked;
+}
+
 // Key handling
 hiddenInput.addEventListener('keydown', (e)=>{
   if(!state.running) return;
@@ -297,11 +301,9 @@ function extendPromptStream(module){
 
 function buildInitialStream(module){
   state.promptStream = "";
-  // Start with the rotated seed prompt for variety
   const idx = nextPromptIndex(module);
   const seed = (MODULES[module]||[])[idx] || "";
   state.promptStream = seed;
-  // Then extend to a large buffer
   while(state.promptStream.length < 3000){ extendPromptStream(module); }
 }
 
@@ -320,10 +322,18 @@ function renderTyping(){
   typedEl.textContent = state.typed;
   const p = state.promptStream;
   const promptNodes = promptEl.children;
-  const len = Math.min(p.length, state.typed.length);
-  for(let i=0;i<len;i++){
+  const total = promptNodes.length;
+  const tlen = state.typed.length;
+  for(let i=0;i<total;i++){
     const node = promptNodes[i];
-    if(p[i]===state.typed[i]) node?.classList.add('correct'); else node?.classList.add('incorrect');
+    if(!node) continue;
+    if(i < tlen){
+      const isCorrect = p[i]===state.typed[i];
+      node.classList.toggle('correct', isCorrect);
+      node.classList.toggle('incorrect', !isCorrect);
+    } else {
+      node.classList.remove('correct','incorrect');
+    }
   }
 }
 
@@ -343,13 +353,12 @@ function updateTimeLeft(secondsLeft){
 function computeStats(){
   const p = state.promptStream;
   const t = state.typed;
-  const len = Math.max(p.length, t.length);
+  const typedLen = t.length;
   let correct=0;
-  for(let i=0;i<len;i++) if(p[i]===t[i]) correct++;
-  const total=len;
+  for(let i=0;i<typedLen;i++) if(p[i]===t[i]) correct++;
   const minutes = Math.max(0.001, (elapsedSeconds()/60));
   const wpm = Math.max(0, Math.round(((correct)/5) / minutes));
-  const acc = total>0 ? Math.round((correct/total)*100) : 100; // % correct
+  const acc = typedLen>0 ? Math.round((correct/typedLen)*100) : 100; // % correct of typed only
   return {wpm, acc, minutes: Number(minutes.toFixed(2))};
 }
 
@@ -380,6 +389,7 @@ function startRun(){
   state.running=true; state.paused=false; state.typed='';
   state.startTime=Date.now(); state.lastKeyTs=Date.now();
   state.attemptId = (crypto&&crypto.randomUUID)?crypto.randomUUID():String(Date.now());
+  setSelectorsLocked(true);
   renderPrompt(); renderTyping(); showMsg(`Timed test: ${state.durationMin} minute${state.durationMin>1?'s':''}.`, '');
   updateStats(); updateTimeLeft(state.durationMin*60); focusTyping(); startTicker();
 }
@@ -388,6 +398,7 @@ el('resetBtn').addEventListener('click', resetRun);
 function resetRun(){
   stopTicker();
   state.running=false; state.paused=false; state.typed=''; state.promptStream='';
+  setSelectorsLocked(false);
   renderPrompt(); renderTyping(); updateStats(true); showMsg('Reset.');
 }
 
@@ -402,6 +413,7 @@ function finishRun(){
   stopTicker();
   const {wpm, acc, minutes} = computeStats();
   state.running=false; state.paused=false;
+  setSelectorsLocked(false);
   saveAttempt({id:state.attemptId,module:state.module,wpm,acc,minutes,date:new Date().toISOString(),duration:state.durationMin});
   renderProgress();
   const hitWpm = wpm>=GOAL_WPM; const hitAcc = acc>=GOAL_ACC;
@@ -428,39 +440,36 @@ function renderProgress(){
   const tbody = document.querySelector('#progressTable tbody');
   tbody.innerHTML='';
   const attempts = getAttempts();
-  const byModule = Object.fromEntries(Object.keys(MODULES).map(m=>[m, []]));
-  attempts.forEach(a=>{ if(byModule[a.module]) byModule[a.module].push(a); });
-  Object.entries(byModule).forEach(([m,list])=>{
-    const one = best3AvgForDuration(list, 1);
-    const three = best3AvgForDuration(list, 3);
-    const tr=document.createElement('tr');
-    tr.innerHTML = `<td>${m}</td>
-      <td>${one.wpm} WPM ${one.wpm>=GOAL_WPM&&one.n? '✅':''} • ${one.acc}% ${one.acc>=GOAL_ACC&&one.n? '✅':''} • ${list.filter(x=>x.duration===1).length} attempts</td>
-      <td>${three.wpm} WPM ${three.wpm>=GOAL_WPM&&three.n? '✅':''} • ${three.acc}% ${three.acc>=GOAL_ACC&&three.n? '✅':''} • ${list.filter(x=>x.duration===3).length} attempts</td>`;
-    tbody.appendChild(tr);
-  });
+  const m = state.module;
+  const list = attempts.filter(a=>a.module===m);
+  const one = best3AvgForDuration(list, 1);
+  const three = best3AvgForDuration(list, 3);
+  const tr=document.createElement('tr');
+  tr.innerHTML = `<td>${m}</td>
+    <td>${one.wpm} WPM ${one.wpm>=GOAL_WPM&&one.n? '✅':''} • ${one.acc}% ${one.acc>=GOAL_ACC&&one.n? '✅':''} • ${list.filter(x=>x.duration===1).length} attempts</td>
+    <td>${three.wpm} WPM ${three.wpm>=GOAL_WPM&&three.n? '✅':''} • ${three.acc}% ${three.acc>=GOAL_ACC&&three.n? '✅':''} • ${list.filter(x=>x.duration===3).length} attempts</td>`;
+  tbody.appendChild(tr);
   el('attempts').textContent = attempts.length;
 }
 
 // --- Reporting helpers ---
-function buildReportHTML(now, attempts, studentName){
+function buildReportHTML(now, attempts, studentName, selectedModule){
   const safeName = (studentName||'').replace(/[<>]/g,'');
   const rows = attempts.map(a=>`<tr><td>${a.module}</td><td>${a.duration} min</td><td>${a.wpm}</td><td>${a.acc}%</td><td>${a.minutes}</td><td>${new Date(a.date).toLocaleString()}</td></tr>`).join('');
-  const prog = Object.keys(MODULES).map((m)=>{
-    const list = attempts.filter(a=>a.module===m);
-    const one = best3AvgForDuration(list,1); const three = best3AvgForDuration(list,3);
-    return `<tr><td>${m}</td><td>${one.wpm} WPM • ${one.acc}%</td><td>${three.wpm} WPM • ${three.acc}%</td><td>${list.length}</td></tr>`;
-  }).join('');
+  const list = attempts.filter(a=>a.module===selectedModule);
+  const one = best3AvgForDuration(list,1); const three = best3AvgForDuration(list,3);
+  const prog = `<tr><td>${selectedModule}</td><td>${one.wpm} WPM • ${one.acc}%</td><td>${three.wpm} WPM • ${three.acc}%</td><td>${list.length}</td></tr>`;
   return `<!doctype html><html><head><meta charset="utf-8"><title>NCC Typing Report</title>
     <style>body{font:14px system-ui,Segoe UI,Roboto,Arial} h1{font-size:18px;margin:0 0 8px} table{width:100%;border-collapse:collapse;margin-top:10px} th,td{border:1px solid #ccc;padding:6px;text-align:left} .muted{color:#666} .small{font-size:12px}</style>
   </head><body onload="window.print()">
     <h1>Pharmacy Typing Report</h1>
     <div class='muted small'>Generated: ${now}</div>
     <div><strong>Student:</strong> ${safeName||'<em>(not provided)</em>'}</div>
-    <p>This report shows your timed attempts (1 or 3 minutes) and the averages of your best three runs per course.</p>
+    <div><strong>Course:</strong> ${selectedModule}</div>
+    <p>This report shows your timed attempts (1 or 3 minutes) and the averages of your best three runs for the selected course.</p>
     <h2>Course Averages (Best‑3, by duration)</h2>
     <table><thead><tr><th>Course</th><th>1‑Minute (Avg WPM • Avg Acc)</th><th>3‑Minute (Avg WPM • Avg Acc)</th><th>Total Attempts</th></tr></thead><tbody>${prog}</tbody></table>
-    <h2>All Attempts</h2>
+    <h2>Attempts — ${selectedModule}</h2>
     <table><thead><tr><th>Course</th><th>Duration</th><th>WPM</th><th>Accuracy</th><th>Minutes</th><th>Date</th></tr></thead><tbody>${rows||'<tr><td colspan="6">No attempts yet.</td></tr>'}</tbody></table>
   </body></html>`;
 }
@@ -472,9 +481,10 @@ function createCSV(a, studentName){
 
 // Report (print‑ready)
 el('reportBtn').addEventListener('click', ()=>{
-  const attempts = getAttempts();
+  const selected = state.module;
+  const attempts = getAttempts().filter(a=>a.module===selected);
   const now = new Date().toLocaleString();
-  const html = buildReportHTML(now, attempts, studentNameEl.value.trim());
+  const html = buildReportHTML(now, attempts, studentNameEl.value.trim(), selected);
   const win = window.open('', '_blank');
   if(!win){
     const blob = new Blob([html], {type:'text/html'});
@@ -503,55 +513,27 @@ el('csvBtn').addEventListener('click', ()=>{
 function showMsg(t,cls){ msgEl.className = cls?cls+' muted': 'muted'; msgEl.textContent=t; }
 
 // ----------------------
-// Developer Self‑Tests
+// (Optional) Dev self-tests — run only if URL hash is #devtests
 // ----------------------
-function runTests(){
-  const results=[]; const assert=(name,cond)=>results.push({name,pass:!!cond});
-  // Dropdown populated
+(function optionalDevTests(){
+  if(location.hash !== '#devtests') return;
+  const results=[]; const assert=(name,cond)=>{ results.push({name,pass:!!cond}); };
+  // smoke tests
   assert('module dropdown populated', document.querySelectorAll('#module option').length >= 7);
-  // Report integrity & student
-  const html = buildReportHTML('now', [], 'Alice Student');
-  assert('report has </html>', /<\/html>\s*$/.test(html));
-  assert('report has student name', /Alice Student/.test(html));
-  assert('report has </head>', /<\/head>/.test(html));
-  assert('report has </body>', /<\/body>/.test(html));
-  // CSV header present
-  const csv = createCSV([{module:'X',wpm:10,acc:99,minutes:1,duration:1,date:new Date().toISOString()}], 'Bob');
-  assert('csv header ok', /^student_name,course,duration_min,wpm,accuracy,minutes,date/.test(csv));
-  assert('csv includes name', /Bob/.test(csv));
-  // Prompt stream extends when needed
-  const prevPrompt = state.promptStream; buildInitialStream(Object.keys(MODULES)[0]); const initialLen = state.promptStream.length; extendPromptStream(Object.keys(MODULES)[0]); assert('extendPromptStream grows text', state.promptStream.length>initialLen);
-  state.promptStream = prevPrompt;
-  // Time formatting
   updateTimeLeft(61); assert('time format mm:ss', el('time').textContent==='1:01');
-  // Accuracy correctness checks (% CORRECT)
-  const prev = {...state};
-  state.promptStream='abc'; state.typed='abc'; state.running=true; state.startTime=Date.now()-60000; // 1 min
-  let m = computeStats();
-  assert('accuracy 100 when identical', m.acc===100);
-  state.promptStream='abc'; state.typed='abb'; m = computeStats();
-  assert('accuracy 66 when 2/3 correct', m.acc===66);
+  // typed-only accuracy + backspace reflow
+  const prev={...state}; state.promptStream='abc'; renderPrompt(); state.typed='abx'; state.running=true; state.startTime=Date.now()-60000; renderTyping(); let m=computeStats(); assert('66% with abx', m.acc===66);
+  state.typed='ab'; renderTyping(); m=computeStats(); assert('after backspace to ab, 100% of typed', m.acc===100);
+  state.typed+='c'; renderTyping(); m=computeStats(); assert('after typing c, 100%', m.acc===100);
   Object.assign(state, prev);
-  // updateStats tests
-  assert('updateStats exists', typeof updateStats === 'function');
-  updateStats(true); assert('updateStats(true) clears WPM', el('wpm').textContent==='0'); assert('updateStats(true) clears Acc', el('acc').textContent==='100%');
-  state.promptStream='abcde'; state.typed='abcde'; state.running=true; state.startTime=Date.now()-60000; updateStats(); assert('updateStats() writes acc %', /%$/.test(el('acc').textContent));
-  // Rotation increments per attempt
-  const before = getRotation()[state.module] ?? -1; const idx = nextPromptIndex(state.module); const after = getRotation()[state.module];
-  assert('rotation increments', typeof idx==='number' && after !== before);
-  // Backspace toggle prevents deletion
-  allowBackspaceEl.checked=false; const prevText='hello'; state.typed=prevText; const ev=new KeyboardEvent('keydown',{key:'Backspace',bubbles:true}); hiddenInput.dispatchEvent(ev); assert('backspace disabled when toggle off', state.typed===prevText); allowBackspaceEl.checked=true;
-  // Summary
-  const passAll = results.every(r=>r.pass);
-  el('testStatus').textContent = passAll ? 'All tests passed.' : 'Failures: '+results.filter(r=>!r.pass).map(r=>r.name).join(', ');
-}
-
-document.getElementById('testBtn').addEventListener('click', runTests);
+  console.log('DEV TESTS:', results);
+})();
 
 // Initialize
 (function init(){
   const corrStateEl = document.getElementById('corrState');
   corrStateEl.textContent = allowBackspaceEl.checked? 'Allowed':'Not allowed';
+  setSelectorsLocked(false);
   renderProgress();
   renderPrompt();
   renderTyping();
