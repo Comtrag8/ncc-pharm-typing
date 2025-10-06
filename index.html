@@ -5,39 +5,94 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Pharmacy Typing Practice (NCC)</title>
   <style>
-    :root{--bg:#0b1220;--card:#111a2b;--ink:#e6eefc;--muted:#aac1ea;--ok:#19c37d;--warn:#ffb020;--err:#ff5c5c}
+    /* =====================================
+       NCC BRANDING & LIGHT THEME
+       Purple: #6c4ba5  |  Teal: #1aa3ad
+       ===================================== */
+    :root{
+      --ncc-purple:#6c4ba5;
+      --ncc-teal:#1aa3ad;
+      --bg:#f8fafc;                 /* page background */
+      --surface:#ffffff;             /* cards, inputs, prompt/typed */
+      --ink:#1f2937;                 /* primary text */
+      --muted:#6b7280;               /* secondary text */
+      --border:#e5e7eb;              /* subtle borders */
+      --ink-contrast:#ffffff;        /* on gradient header / primary btn */
+      --ok:#16a34a;                  /* success */
+      --warn:#f59e0b;                /* warning */
+      --err:#ef4444;                 /* error */
+      --shadow:0 10px 20px rgba(17,24,39,.08);
+      --ring: 0 0 0 3px rgba(26,163,173,.25);
+    }
+
     html,body{height:100%}
     body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial, sans-serif}
     .wrap{max-width:1200px;margin:0 auto;padding:20px}
-    header{display:flex;gap:16px;align-items:center;justify-content:space-between}
-    h1{font-size:1.25rem;margin:0}
+
+    /* Header with NCC gradient */
+    header{display:flex;gap:16px;align-items:center;justify-content:space-between;padding:14px 16px;border-radius:16px;background:linear-gradient(135deg,var(--ncc-purple),var(--ncc-teal));color:var(--ink-contrast);box-shadow:var(--shadow)}
+    h1{font-size:1.25rem;margin:0;color:var(--ink-contrast)}
+    header .toggle label{color:rgba(255,255,255,.9)}
+
     .grid{display:grid;grid-template-columns:320px 1fr;gap:16px;margin-top:16px}
-    .card{background:var(--card);border-radius:14px;padding:14px 16px;box-shadow:0 1px 0 rgba(255,255,255,0.04) inset, 0 10px 20px rgba(0,0,0,0.3)}
-    label{display:block;font-size:.85rem;color:var(--muted);margin:8px 0 4px}
-    select,button,input[type="text"]{width:100%;padding:10px 12px;border-radius:10px;border:1px solid #2b3960;background:#0c1526;color:var(--ink)}
-    button{cursor:pointer}
-    button.primary{background:linear-gradient(180deg,#2d64ff,#1c47c8);border:0}
-    button.ghost{background:transparent;border:1px solid #2b3960}
+
+    /* Light cards */
+    .card{background:var(--surface);border-radius:14px;padding:14px 16px;border:1px solid var(--border);box-shadow:var(--shadow)}
+
+    label{display:block;font-size:.9rem;color:var(--muted);margin:8px 0 4px}
+
+    select,button,input[type="text"]{width:100%;padding:10px 12px;border-radius:10px;border:1px solid var(--border);background:var(--surface);color:var(--ink);box-shadow:none}
+    select:focus,button:focus,input[type="text"]:focus,.typed:focus{outline:none;box-shadow:var(--ring)}
+
+    /* Buttons */
+    button{cursor:pointer;transition:.15s transform ease, .15s box-shadow ease}
+    button:active{transform:translateY(1px)}
+    button.primary{background:linear-gradient(135deg,var(--ncc-purple),var(--ncc-teal));border:0;color:var(--ink-contrast)}
+    button.primary:disabled{opacity:.7}
+    button.ghost{background:transparent;border:1px solid var(--ncc-teal);color:var(--ncc-teal)}
+    button.ghost:hover{box-shadow:0 0 0 3px rgba(26,163,173,.15)}
     button:disabled{opacity:.6;cursor:not-allowed}
+
     .row{display:flex;gap:8px;align-items:center}
+
+    /* Stats */
     .stats{display:flex;gap:12px;flex-wrap:wrap}
-    .stat{background:#0c1526;border:1px solid #2b3960;border-radius:12px;padding:10px 12px;min-width:120px;text-align:center}
+    .stat{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:10px 12px;min-width:120px;text-align:center}
     .stat small{display:block;color:var(--muted);font-size:.75rem}
-    .prompt{user-select:none;white-space:pre-wrap;background:#0c1526;border:1px solid #2b3960;border-radius:12px;padding:12px;min-height:160px;max-height:220px;overflow:auto}
-    .typed{min-height:160px;max-height:220px;overflow:auto;border-radius:12px;border:1px dashed #2b3960;padding:12px;background:#0c1526}
+
+    /* Prompt and typing areas in light mode */
+    .prompt{user-select:none;white-space:pre-wrap;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px;min-height:160px;max-height:220px;overflow:auto}
+    .typed{min-height:160px;max-height:220px;overflow:auto;border-radius:12px;border:1px dashed var(--border);padding:12px;background:var(--surface)}
+
+    /* Per-character feedback */
     .char{padding:1px 0;border-bottom:2px solid transparent}
     .char.correct{color:var(--ok)}
     .char.incorrect{color:var(--err);border-bottom-color:var(--err)}
+
     .controls{display:flex;gap:8px;flex-wrap:wrap}
     .kudos{color:var(--ok)}
     .warn{color:var(--warn)}
     .muted{color:var(--muted)}
+
     .footer{margin-top:12px;color:var(--muted);font-size:.85rem}
+
     .table{width:100%;border-collapse:collapse}
-    .table th,.table td{padding:8px;border-bottom:1px solid #253154;text-align:left;vertical-align:top}
+    .table th,.table td{padding:8px;border-bottom:1px solid var(--border);text-align:left;vertical-align:top}
+    .table th{color:var(--muted);font-weight:600}
     .sub{font-size:.85rem;color:var(--muted)}
+
+    /* High contrast toggle (optional) */
+    .hc body{color:#0b0f19}
+
     @media (max-width: 1000px){ .grid{grid-template-columns:1fr} }
-    @media print{header,.controls,.side,.footer{display:none} body{background:#fff;color:#000} .card{box-shadow:none;border:1px solid #ddd} .prompt,.typed{background:#fff;border-color:#ddd}}
+
+    /* Print styles remain clean */
+    @media print{
+      header,.controls,.side,.footer{display:none}
+      body{background:#fff;color:#000}
+      .card{box-shadow:none;border:1px solid #ddd}
+      .prompt,.typed{background:#fff;border-color:#ddd}
+    }
   </style>
 </head>
 <body>
@@ -47,7 +102,7 @@
     <div class="row">
       <div class="toggle" title="High Contrast">
         <input id="hc" type="checkbox" aria-label="High contrast" />
-        <label for="hc" class="muted">High contrast</label>
+        <label for="hc">High contrast</label>
       </div>
     </div>
   </header>
